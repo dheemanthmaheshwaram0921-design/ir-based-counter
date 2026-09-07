@@ -1,1 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Smart Visitor Counter Simulation</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0d1117;
+      color: #e6edf3;
+    }
+
+    #webgl-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    /* UI Overlay */
+    #ui-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px;
+    }
+
+    .interactive {
+      pointer-events: auto;
+    }
+
+    header {
+      background: rgba(22, 27, 34, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 16px 24px;
+      border-radius: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: #58a6ff;
+    }
+
+    .counter-display {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(88, 166, 255, 0.3);
+    }
+
+    .counter-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #8b949e;
+      letter-spacing: 1px;
+    }
+
+    .counter-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #3fb950;
+      font-family: monospace;
+    }
+
+    /* Info Panel */
+    #info-panel {
+      position: absolute;
+      right: 24px;
+      top: 90px;
+      width: 320px;
+      background: rgba(22, 27, 34, 0.85);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 20px;
+      transform: translateX(380px);
+      opacity: 0;
+      transition: all 0.3s ease;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    #info-panel.active {
+      transform: translateX(0);
+      opacity: 1;
+    }
+
+    #info-panel h2 {
+      font-size: 16px;
+      color: #58a6ff;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #info-panel p {
+      font-size: 13px;
+      line-height: 1.6;
+      color: #c9d1d9;
+    }
+
+    #info-panel .specs {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 12px;
+      color: #8b949e;
+    }
+
+    /* Controls Bar */
+    .controls-bar {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .btn {
+      background: linear-gradient(180deg, #238636 0%, #2ea043 100%);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(46, 160, 67, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(46, 160, 67, 0.4);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: rgba(33, 38, 45, 0.8);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      color: #c9d1d9;
+      box-shadow: none;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(48, 54, 61, 1);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .tooltip {
+      position: absolute;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.6);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      color: #8b949e;
+      pointer-events: none;
+    }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+</head>
+<body>
+
+  <div id="webgl-container"></div>
+
+  <div id="ui-container">
+    <header class="interactive">
+      <h1>Smart Doorstep Counter Circuit</h1>
+      <div class="counter-display">
+        <span class="counter-label">Students Entered:</span>
+        <span id="counter" class="counter-value">00</span>
+      </div>
+    </header>
+
+    <div id="info-panel" class="interactive">
+      <h2 id="panel-title">Component Name</h2>
+      <p id="panel-desc">Click on any component in the scene to inspect its technical details and function in the directional entry counter circuit.</p>
+      <div id="panel-specs" class="specs">Role: Directional Detection</div>
+    </div>
+
+    <div class="tooltip">Click any component to inspect • Drag to rotate scene</div>
+
+    <div class="controls-bar interactive">
+      <button id="btn-pass" class="btn">Simulate Student Entry</button>
+      <button id="btn-reset-cam" class="btn btn-secondary">Reset View</button>
+    </div>
+  </div>
+
+  <script>
+    // --- 1. SCENE SETUP ---
+    const container = document.getElementById('webgl-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0e14);
+    scene.fog = new THREE.FogExp2(0x0a0e14, 0.03);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    const initialCamPos = { x: 0, y: 5, z: 9 };
+    camera.position.set(initialCamPos.x, initialCamPos.y, initialCamPos.z);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 - 0.01; // Don't go below ground
+    controls.minDistance = 2;
+    controls.maxDistance = 15;
+    controls.target.set(0, 1.2, 0);
+
+    // --- 2. LIGHTING ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(5, 10, 7);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 0.5;
+    dirLight.shadow.camera.far = 25;
+    dirLight.shadow.bias = -0.0005;
+    scene.add(dirLight);
+
+    const blueSpot = new THREE.SpotLight(0x38bdf8, 2, 10, Math.PI / 4, 0.5);
+    blueSpot.position.set(-4, 4, 2);
+    scene.add(blueSpot);
+
+    // --- 3. ENVIRONMENT & DOORWAY ---
+    const floorGeo = new THREE.PlaneGeometry(30, 30);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.8, metalness: 0.2 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    const grid = new THREE.GridHelper(30, 30, 0x1f2937, 0x111827);
+    grid.position.y = 0.01;
+    scene.add(grid);
+
+    // Door frame
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.5, metalness: 0.8 });
+    const pillarGeo = new THREE.BoxGeometry(0.3, 3, 0.4);
+    
+    const leftPillar = new THREE.Mesh(pillarGeo, frameMat);
+    leftPillar.position.set(-1.8, 1.5, 0);
+    leftPillar.castShadow = true;
+    leftPillar.receiveShadow = true;
+    scene.add(leftPillar);
+
+    const rightPillar = new THREE.Mesh(pillarGeo, frameMat);
+    rightPillar.position.set(1.8, 1.5, 0);
+    rightPillar.castShadow = true;
+    rightPillar.receiveShadow = true;
+    scene.add(rightPillar);
+
+    const topLintel = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.3, 0.4), frameMat);
+    topLintel.position.set(0, 3, 0);
+    topLintel.castShadow = true;
+    scene.add(topLintel);
+
+    // --- 4. ELECTRONIC COMPONENTS (INTERACTIVE OBJECTS) ---
+    const interactiveObjects = [];
+
+    // Helper to create LED Diode / Photodiode
+    function createSensorNode(x, y, z, label, info) {
+      const group = new THREE.Group();
+      group.position.set(x, y, z);
+
+      // Bracket
+      const bracketGeo = new THREE.BoxGeometry(0.1, 0.15, 0.15);
+      const bracketMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, metalness: 0.9 });
+      const bracket = new THREE.Mesh(bracketGeo, bracketMat);
+      group.add(bracket);
+
+      // Diode Body
+      const bodyGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.1, 16);
+      const isIR = label.includes("IR");
+      const bodyMat = new THREE.MeshStandardMaterial({ 
+        color: isIR ? 0xef4444 : 0x10b981, 
+        emissive: isIR ? 0x991b1b : 0x065f46,
+        emissiveIntensity: 0.5,
+        roughness: 0.2
+      });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.rotation.z = Math.PI / 2;
+      group.add(body);
+
+      // Hitbox for clicking
+      const hitGeo = new THREE.SphereGeometry(0.25);
+      const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+      const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+      hitMesh.userData = { title: label, desc: info.desc, specs: info.specs, targetPos: new THREE.Vector3(x, y, z) };
+      group.add(hitMesh);
+      interactiveObjects.push(hitMesh);
+
+      scene.add(group);
+      return { group, bodyMat };
+    }
+
+    // Sensors placement (Dual IR Beam Setup: Sensor A & Sensor B)
+    const sensorA_TX = createSensorNode(-1.6, 1.2, -0.3, "IR Emitter Diode A", {
+      desc: "Emits a narrow, continuous beam of infrared light (around 940nm) across the entrance threshold to Photodiode A.",
+      specs: "Component: IR LED (GaAs) | Wavelength: 940nm"
+    });
+    const sensorA_RX = createSensorNode(1.6, 1.2, -0.3, "Photodiode Receiver A", {
+      desc: "Detects IR light from Emitter A. When a student breaks this beam first, the microcontroller initializes an entry sequence.",
+      specs: "Component: Photodiode / IR Receiver Module"
+    });
+
+    const sensorB_TX = createSensorNode(-1.6, 1.2, 0.3, "IR Emitter Diode B", {
+      desc: "Secondary IR beam line. Breaking Beam A then Beam B confirms forward inward movement (Entry).",
+      specs: "Component: IR LED (GaAs) | Wavelength: 940nm"
+    });
+    const sensorB_RX = createSensorNode(1.6, 1.2, 0.3, "Photodiode Receiver B", {
+      desc: "Detects IR light from Emitter B. Sequential trigger (A -> B) increments total counter count.",
+      specs: "Component: Photodiode / IR Receiver Module"
+    });
+
+    // IR Beams Visuals
+    function createBeam(zPos) {
+      const beamGeo = new THREE.CylinderGeometry(0.008, 0.008, 3.1, 8);
+      const beamMat = new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.4 });
+      const beam = new THREE.Mesh(beamGeo, beamMat);
+      beam.rotation.z = Math.PI / 2;
+      beam.position.set(0, 1.2, zPos);
+      scene.add(beam);
+      return beam;
+    }
+    const beamA = createBeam(-0.3);
+    const beamB = createBeam(0.3);
+
+    // Microcontroller Unit (MCU) Box mounted on Right Pillar
+    const mcuGroup = new THREE.Group();
+    mcuGroup.position.set(1.9, 1.8, 0);
+    
+    const mcuBox = new THREE.Mesh(
+      new THREE.BoxGeometry(0.15, 0.4, 0.3),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3, metalness: 0.8 })
+    );
+    mcuBox.castShadow = true;
+    mcuGroup.add(mcuBox);
+
+    // Seven Segment Display Mesh on MCU
+    const displayGeo = new THREE.PlaneGeometry(0.2, 0.1);
+    const displayMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const displayMesh = new THREE.Mesh(displayGeo, displayMat);
+    displayMesh.position.set(-0.08, 0.08, 0);
+    displayMesh.rotation.y = -Math.PI / 2;
+    mcuGroup.add(displayMesh);
+
+    const mcuHitGeo = new THREE.BoxGeometry(0.3, 0.5, 0.4);
+    const mcuHit = new THREE.Mesh(mcuHitGeo, new THREE.MeshBasicMaterial({ visible: false }));
+    mcuHit.userData = {
+      title: "Microcontroller Unit & Logic Circuit",
+      desc: "Processes analog logic signals from Photodiodes A & B. Features state-machine logic to prevent false triggers and drive the digital count display.",
+      specs: "Logic: Dual IC Counter / ATmega328P | Output: Digital TTL"
+    };
+    mcuHit.userData.targetPos = new THREE.Vector3(1.9, 1.8, 0);
+    mcuGroup.add(mcuHit);
+    interactiveObjects.push(mcuHit);
+    scene.add(mcuGroup);
+
+
+    // --- 5. STUDENT MODEL (ANIMATED AGENT) ---
+    const studentGroup = new THREE.Group();
+    
+    // Body
+    const bodyMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.25, 0.2, 0.9, 16),
+      new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.5 })
+    );
+    bodyMesh.position.y = 0.85;
+    bodyMesh.castShadow = true;
+    studentGroup.add(bodyMesh);
+
+    // Head
+    const headMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 16, 16),
+      new THREE.MeshStandardMaterial({ color: 0xfbcfe8, roughness: 0.8 })
+    );
+    headMesh.position.y = 1.45;
+    headMesh.castShadow = true;
+    studentGroup.add(headMesh);
+
+    // Backpack
+    const packMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.4, 0.15),
+      new THREE.MeshStandardMaterial({ color: 0x475569 })
+    );
+    packMesh.position.set(0, 0.9, -0.22);
+    packMesh.castShadow = true;
+    studentGroup.add(packMesh);
+
+    studentGroup.position.set(0, 0, -3.5);
+    scene.add(studentGroup);
+
+
+    // --- 6. INTERACTION & ANIMATION LOGIC ---
+    let studentCount = 0;
+    let isAnimating = false;
+
+    function triggerStudentPass() {
+      if (isAnimating) return;
+      isAnimating = true;
+
+      studentGroup.position.set(0, 0, -3);
+
+      const timeline = gsap.timeline({
+        onComplete: () => {
+          isAnimating = false;
+          studentGroup.position.set(0, 0, -3.5);
+        }
+      });
+
+      // Walk forward to Beam A
+      timeline.to(studentGroup.position, {
+        z: -0.3,
+        duration: 1.2,
+        ease: "power1.inOut",
+        onUpdate: checkBeamIntersections
+      });
+
+      // Walk through Beam B to inside room
+      timeline.to(studentGroup.position, {
+        z: 3,
+        duration: 1.5,
+        ease: "power1.inOut",
+        onUpdate: checkBeamIntersections
+      });
+    }
+
+    function checkBeamIntersections() {
+      const z = studentGroup.position.z;
+
+      // Beam A trigger state
+      if (Math.abs(z - (-0.3)) < 0.2) {
+        beamA.material.color.setHex(0xffff00);
+        beamA.material.opacity = 0.9;
+      } else {
+        beamA.material.color.setHex(0xef4444);
+        beamA.material.opacity = 0.4;
+      }
+
+      // Beam B trigger state
+      if (Math.abs(z - 0.3) < 0.2) {
+        beamB.material.color.setHex(0xffff00);
+        beamB.material.opacity = 0.9;
+
+        // Register Count increment once crossed Beam B threshold
+        if (!studentGroup.userData.hasCounted) {
+          studentCount++;
+          document.getElementById('counter').innerText = String(studentCount).padStart(2, '0');
+          studentGroup.userData.hasCounted = true;
+          
+          // Flash MCU Indicator
+          gsap.to(mcuBox.material.color, { r: 0, g: 1, b: 0, duration: 0.1, yoyo: true, repeat: 1 });
+        }
+      } else {
+        beamB.material.color.setHex(0xef4444);
+        beamB.material.opacity = 0.4;
+      }
+
+      if (z < -0.5) {
+        studentGroup.userData.hasCounted = false;
+      }
+    }
+
+    // --- 7. RAYCASTING & CLICK FOCUS ---
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    window.addEventListener('click', (e) => {
+      // Ignore click if user clicked on UI
+      if (e.target.closest('.interactive')) return;
+
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(interactiveObjects);
+
+      if (intersects.length > 0) {
+        const target = intersects[0].object;
+        focusOnObject(target);
+      }
+    });
+
+    function focusOnObject(target) {
+      const data = target.userData;
+      const targetPos = data.targetPos;
+
+      // Camera Animation via GSAP
+      gsap.to(camera.position, {
+        x: targetPos.x + (targetPos.x > 0 ? 1.2 : -1.2),
+        y: targetPos.y + 0.3,
+        z: targetPos.z + 1.8,
+        duration: 1.5,
+        ease: "power2.inOut"
+      });
+
+      gsap.to(controls.target, {
+        x: targetPos.x,
+        y: targetPos.y,
+        z: targetPos.z,
+        duration: 1.5,
+        ease: "power2.inOut"
+      });
+
+      // Show Info Panel
+      document.getElementById('panel-title').innerText = data.title;
+      document.getElementById('panel-desc').innerText = data.desc;
+      document.getElementById('panel-specs').innerText = data.specs;
+      document.getElementById('info-panel').classList.add('active');
+    }
+
+    function resetCamera() {
+      gsap.to(camera.position, {
+        x: initialCamPos.x,
+        y: initialCamPos.y,
+        z: initialCamPos.z,
+        duration: 1.5,
+        ease: "power2.inOut"
+      });
+
+      gsap.to(controls.target, {
+        x: 0,
+        y: 1.2,
+        z: 0,
+        duration: 1.5,
+        ease: "power2.inOut"
+      });
+
+      document.getElementById('info-panel').classList.remove('active');
+    }
+
+    // Event Listeners
+    document.getElementById('btn-pass').addEventListener('click', triggerStudentPass);
+    document.getElementById('btn-reset-cam').addEventListener('click', resetCamera);
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- 8. RENDER LOOP ---
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
 
